@@ -10,7 +10,7 @@ import weka.core.jvm as jvm
 from weka.classifiers import Classifier
 from weka.attribute_selection import ASSearch, ASEvaluation, AttributeSelection
 from weka.filters import Filter
-from weka.experiments import Tester, ResultMatrix
+from weka.experiments import Tester, ResultMatrix, SimpleCrossValidationExperiment
 
 
 ##### FUNCTIONS ####
@@ -62,12 +62,28 @@ def expe_printer(res_file, comparison_metric):
 	print(tester.header(comparison_col))
 	print(tester.multi_resultset_full(0, comparison_col))
 
+def expe_printer_to_latex(res_file, comparison_metric):
+	text = ""
+	loader = weka.core.converters.loader_for_file(res_file)
+	data = loader.load_file(res_file)
+	matrix = ResultMatrix(classname="weka.experiment.ResultMatrixLatex")
+	tester = Tester(classname="weka.experiment.PairedCorrectedTTester")
+	tester.resultmatrix = matrix
+	comparison_col = data.attribute_by_name(comparison_metric).index
+	tester.instances = data
+	text += tester.header(comparison_col)
+	text += tester.multi_resultset_full(0, comparison_col)
+	return text
+
 #display results of a list of experiments for several comparison metrics
-def full_expe_printer(list_of_res_files, list_of_comparison_metric):
+def full_expe_printer(list_of_res_files, list_of_comparison_metric, destination):
+	latex_table = ""
 	for R in list_of_res_files:
 		for CM in list_of_comparison_metric:
 			expe_printer(R, CM)
-
+			latex_table += expe_printer_to_latex(R, CM)
+	with open(destination, "w") as text_file:
+			print(latex_table, file=text_file) 	
 
 
 # GLOBAL VARIABLES
@@ -87,7 +103,7 @@ nb_runs = 1
 
 begin = time.time()
 
-pattern = "T3_VOC_1" #input("Simple instance name: ")
+pattern = "T3_VOC" #input("Simple instance name: ")
 datasets = [f for f in glob.glob(data_dir + pattern + "*.arff", recursive=True)]
 
 #### CREATE DIRECTORIES ####
@@ -113,23 +129,60 @@ jvm.start()
 
 ## use without attribute selection
 classifiers = [
-    Classifier(classname="weka.classifiers.functions.SMO"),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+    #Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+    #Classifier(classname="weka.classifiers.functions.SMO", options=["-K", "weka.classifiers.functions.supportVector.Puk"]),
+    # Classifier(classname="weka.classifiers.functions.SMO", options=["-K", "weka.classifiers.functions.supportVector.NormalizedPolyKernel"]), 
+
     Classifier(classname="weka.classifiers.trees.J48"),
+    Classifier(classname="weka.classifiers.trees.J48", options=["-R", "-N", "3"]),
+
     Classifier(classname="weka.classifiers.functions.Logistic"),
+    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-6"]),
+    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-4"]),
+    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-2"]),
+
+
     Classifier(classname="weka.classifiers.bayes.NaiveBayes"),
     Classifier(classname="weka.classifiers.trees.RandomForest"),
-    Classifier(classname="weka.classifiers.lazy.IBk")
+    #################################################################
+    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "1"]),
+    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "3"]),
+    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "7"])
+  #  Classifier(classname="weka.classifiers.trees.J48")
 ]
 ## use with attribute selection
 classifiers_for_filtered = [
-    Classifier(classname="weka.classifiers.functions.SMO"),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
+   # Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
+
     Classifier(classname="weka.classifiers.trees.J48"),
+    Classifier(classname="weka.classifiers.trees.J48", options=["-R", "-N", "3"]),
+
     Classifier(classname="weka.classifiers.functions.Logistic"),
+    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-6"]),
+    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-4"]),
+    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-2"]),
+
     Classifier(classname="weka.classifiers.bayes.NaiveBayes"),
     Classifier(classname="weka.classifiers.trees.RandomForest"),
     Classifier(classname="weka.classifiers.bayes.BayesNet"),
  #   Classifier(classname="weka.classifiers.functions.MultilayerPerceptron"),
-    Classifier(classname="weka.classifiers.lazy.IBk")
+    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "1"]),
+    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "3"]),
+    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "7"])
 ]
 
 list_attribute_selection = [
@@ -178,9 +231,8 @@ results = list()
 print("-- EXPERIMENTER FULL")
 begin = time.time()
 result = res_exp_dir + pattern + "_" + str(nb_folds) + "folds.arff"
-from weka.experiments import SimpleCrossValidationExperiment
 exp = SimpleCrossValidationExperiment(
-    classification=True,
+	classification=True,
     runs=nb_runs,
     folds=nb_folds,
     datasets=datasets,
@@ -219,7 +271,7 @@ print("---- duration of phase: " + str(end-begin))
 
 #TODO: check possibilities
 
-full_expe_printer(results, list_of_comparison_metric)
+full_expe_printer(results, list_of_comparison_metric, res_latex_dir+ pattern + "_" + "first_latex_file")
 
 
 
