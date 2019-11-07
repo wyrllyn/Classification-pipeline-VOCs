@@ -2,6 +2,7 @@ import glob
 import os
 import shutil
 import time
+import sys
 
 import weka.core.converters
 from weka.core.converters import Loader
@@ -12,10 +13,11 @@ from weka.attribute_selection import ASSearch, ASEvaluation, AttributeSelection
 from weka.filters import Filter
 from weka.experiments import Tester, ResultMatrix, SimpleCrossValidationExperiment
 
+from weka_variables import set_weka_options 
+
 
 ##### FUNCTIONS ####
 ####################
-
 
 #voir commentaire + en détail pour la doc
 # selects attributes and return a string containing filtered data
@@ -40,6 +42,7 @@ def create_temp_filtered_files(datasets, str_eval, str_search, tmp_dir):
 	list_temp_files = list()
 	tmp_eval_name = str_eval.split(".")[-1]
 	tmp_search_name = str_search.split(".")[-1]
+	loader = Loader(classname="weka.core.converters.ArffLoader") 
 	for ds in datasets:
 		data_filtered =  use_filter(loader.load_file(ds), str_eval, str_search)
 		tmp_file_name = ds.split("/")[-1]
@@ -49,6 +52,49 @@ def create_temp_filtered_files(datasets, str_eval, str_search, tmp_dir):
 		with open(tmp_dir + full_name, "w") as text_file:
 			print(data_filtered, file=text_file) 		
 	return list_temp_files
+
+# creates all datasets filtered
+def attribute_selection(list_attribute_selection, datasets):
+	all_datasets_filtered = list()
+	for element in list_attribute_selection:
+		datasets_filtered = create_temp_filtered_files(datasets, element[0], element[1], tmp_dir)
+		all_datasets_filtered.append(datasets_filtered)
+	return all_datasets_filtered
+
+
+#experimenter unfiltered
+def experimenter(datasets, base_res, nb_runs, nb_folds, classifiers):
+	tmpres=list()
+	result = base_res + "_" + str(nb_folds) + "folds.arff"
+	exp = SimpleCrossValidationExperiment(
+		classification=True,
+		runs=nb_runs,
+	 	folds=nb_folds,
+	    datasets=datasets,
+	    classifiers=classifiers,
+	    result=result)
+	exp.setup()
+	exp.run()
+	tmpres.append(result)
+	return tmpres
+
+#run experimenter on filtered datasets	
+def experimenter_filtered (all_datasets_filtered, base_res, nb_runs, nb_folds, classifiers_for_filtered):
+	tmpres=list()
+	for ds in all_datasets_filtered:
+		attrib_name = (ds[-1].split("_")[0]).split("/")[-1]
+		res = base_res + "_" + attrib_name + "_" + str(nb_folds) + "folds.arff"
+		exp = SimpleCrossValidationExperiment(
+	    	classification=True,
+	    	runs=nb_runs,
+	    	folds=nb_folds,
+	    	datasets=ds,
+	    	classifiers=classifiers_for_filtered,
+	    	result=res)
+		exp.setup()
+		exp.run()
+		tmpres.append(res)
+	return tmpres
 
 # display results of one experiment according to a comparison metric
 def expe_printer(res_file, comparison_metric):
@@ -85,6 +131,15 @@ def full_expe_printer(list_of_res_files, list_of_comparison_metric, destination)
 	with open(destination, "w") as text_file:
 			print(latex_table, file=text_file) 	
 
+#function to run autoweka
+#examples of call autoweka(data, "1", "areaUnderROC")
+#autoweka(data, "1", "fMeasure")
+#autoweka(data, "1", "fMeasure")
+def autoweka(data, duration, metric, nb_folds):
+	classifier = Classifier(classname="weka.classifiers.meta.AutoWEKAClassifier", options=["-x", nb_folds, "-timeLimit", duration, "-metric", metric])  #classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-2"]
+	classifier.build_classifier(data)
+	print(classifier)
+
 
 # GLOBAL VARIABLES
 path = os.getcwd()
@@ -102,8 +157,14 @@ nb_runs = 1
 ####################
 
 begin = time.time()
-
 pattern = "T3_VOC" #input("Simple instance name: ")
+
+print(sys.argv[1])
+pattern = sys.argv[1]
+nb_folds = int(sys.argv[2])
+#print(nb_folds)
+base_res = res_exp_dir + pattern
+
 datasets = [f for f in glob.glob(data_dir + pattern + "*.arff", recursive=True)]
 
 #### CREATE DIRECTORIES ####
@@ -121,107 +182,30 @@ if not os.path.exists(tmp_dir):
 
 
 
-jvm.start()
 
+##### START ########
+###################
+
+jvm.start(packages=True)
 
 ##### LIST OF CLASSIFIERS ####
 ####################
 
-## use without attribute selection
-classifiers = [
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-    #Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-    #Classifier(classname="weka.classifiers.functions.SMO", options=["-K", "weka.classifiers.functions.supportVector.Puk"]),
-    # Classifier(classname="weka.classifiers.functions.SMO", options=["-K", "weka.classifiers.functions.supportVector.NormalizedPolyKernel"]), 
+classifiers, classifiers_for_filtered, list_attribute_selection, list_of_comparison_metric = set_weka_options()
 
-    Classifier(classname="weka.classifiers.trees.J48"),
-    Classifier(classname="weka.classifiers.trees.J48", options=["-R", "-N", "3"]),
-
-    Classifier(classname="weka.classifiers.functions.Logistic"),
-    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-6"]),
-    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-4"]),
-    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-2"]),
-
-
-    Classifier(classname="weka.classifiers.bayes.NaiveBayes"),
-    Classifier(classname="weka.classifiers.trees.RandomForest"),
-    #################################################################
-    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "1"]),
-    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "3"]),
-    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "7"])
-  #  Classifier(classname="weka.classifiers.trees.J48")
-]
-## use with attribute selection
-classifiers_for_filtered = [
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100", "-K", "weka.classifiers.functions.supportVector.PolyKernel"]),
-   # Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "0.1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "1","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "10","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-    Classifier(classname="weka.classifiers.functions.SMO", options=["-C", "100","-K", "weka.classifiers.functions.supportVector.RBFKernel"]),
-
-    Classifier(classname="weka.classifiers.trees.J48"),
-    Classifier(classname="weka.classifiers.trees.J48", options=["-R", "-N", "3"]),
-
-    Classifier(classname="weka.classifiers.functions.Logistic"),
-    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-6"]),
-    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-4"]),
-    Classifier(classname="weka.classifiers.functions.Logistic", options=["-R", "1.0E-2"]),
-
-    Classifier(classname="weka.classifiers.bayes.NaiveBayes"),
-    Classifier(classname="weka.classifiers.trees.RandomForest"),
-    Classifier(classname="weka.classifiers.bayes.BayesNet"),
- #   Classifier(classname="weka.classifiers.functions.MultilayerPerceptron"),
-    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "1"]),
-    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "3"]),
-    Classifier(classname="weka.classifiers.lazy.IBk", options=["-K", "7"])
-]
-
-list_attribute_selection = [
-	("weka.attributeSelection.CfsSubsetEval", "weka.attributeSelection.GreedyStepwise"),
-	#("weka.attributeSelection.CfsSubsetEval", "weka.attributeSelection.BestFirst"),
-	#("weka.attributeSelection.ClassifierAttributeEval", "weka.attributeSelection.Ranker"),
-	#("weka.attributeSelection.ClassifierSubsetEval", "weka.attributeSelection.GreedyStepwise"),#too many
-	#("weka.attributeSelection.CorrelationAttributeEval", "weka.attributeSelection.Ranker"),#too many
-	#("weka.attributeSelection.GainRatioAttributeEval", "weka.attributeSelection.Ranker"),#too many
-	#("weka.attributeSelection.InfoGainAttributeEval", "weka.attributeSelection.Ranker"), #too many
-	#("weka.attributeSelection.OneRAttributeEval", "weka.attributeSelection.Ranker"),
-	#("weka.attributeSelection.PrincipalComponents", "weka.attributeSelection.Ranker") #bug O____O
-	#("weka.attributeSelection.ReliefAttributeEval", "weka.attributeSelection.Ranker"),
-	#("weka.attributeSelection.SymmetricalUncertAttributeEval", "weka.attributeSelection.Ranker"), #too many
-	#("weka.attributeSelection.WrapperSubsetEval", "weka.attributeSelection.GreedyStepwise")
-]
-
-list_of_comparison_metric = [
-	"True_positive_rate",
-	"True_negative_rate",
-	"Area_under_ROC",
-	"Matthews_correlation"
-]
 
 #### ATTRIBUTE SELECTION ####
 #############################
 print("-- ATTRIBUTE SELECTION")
 # to convert files before using function use_filter
-loader = Loader(classname="weka.core.converters.ArffLoader") 
 
 
-all_datasets_filtered = list()
-for element in list_attribute_selection:
-	print("********************")
-	datasets_filtered = create_temp_filtered_files(datasets, element[0], element[1], tmp_dir)
-	all_datasets_filtered.append(datasets_filtered)
+all_datasets_filtered = attribute_selection(list_attribute_selection, datasets)
 
 end = time.time()
 print("---- duration of first phase: " + str(end-begin))
+
+
 
 ##### EXPERIMENTER ####
 ####################
@@ -229,41 +213,19 @@ print("---- duration of first phase: " + str(end-begin))
 results = list()
 
 print("-- EXPERIMENTER FULL")
-begin = time.time()
-result = res_exp_dir + pattern + "_" + str(nb_folds) + "folds.arff"
-exp = SimpleCrossValidationExperiment(
-	classification=True,
-    runs=nb_runs,
-    folds=nb_folds,
-    datasets=datasets,
-    classifiers=classifiers,
-    result=result)
-exp.setup()
-exp.run()
-results.append(result)
 
+begin = time.time()
+results += experimenter(datasets, base_res, nb_runs, nb_folds, classifiers)
 end = time.time()
 print("---- duration of phase: " + str(end-begin))
 
 
 print("-- EXPERIMENTER FILTERED")
 begin = time.time()
-for ds in all_datasets_filtered:
-	attrib_name = (ds[-1].split("_")[0]).split("/")[-1]
-	res = res_exp_dir + pattern + "_" + attrib_name + "_" + str(nb_folds) + "folds.arff"
-	exp = SimpleCrossValidationExperiment(
-    	classification=True,
-    	runs=nb_runs,
-    	folds=nb_folds,
-    	datasets=ds,
-    	classifiers=classifiers_for_filtered,
-    	result=res)
-	exp.setup()
-	exp.run()
-	results.append(res)
-
+results += experimenter_filtered(all_datasets_filtered, base_res, nb_runs, nb_folds, classifiers_for_filtered)
 end = time.time()
 print("---- duration of phase: " + str(end-begin))
+
 
 
 #### VISUALISATION + RESULTS #####
@@ -271,9 +233,7 @@ print("---- duration of phase: " + str(end-begin))
 
 #TODO: check possibilities
 
-full_expe_printer(results, list_of_comparison_metric, res_latex_dir+ pattern + "_" + "first_latex_file")
-
-
+full_expe_printer(results, list_of_comparison_metric, res_latex_dir+ pattern + "_" + str(nb_folds) + "folds_latex")
 
 jvm.stop()
 
