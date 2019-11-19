@@ -24,6 +24,74 @@ def load_file(data_path):
 			elem = round(elem,3)
 	return headers, X, y
 
+# change class positive to 0 and negative to 1 in file, use before numpy arrays
+def change_class_value(dataset):
+	#.replace("geeks", "Geeks")
+	content = open(dataset,'r').read()
+	content = content.replace('positive','0')
+	content = content.replace('negative', '1')
+	with open(dataset, "w") as f:
+		f.write(content)
+
+def load_discretized_file(dataset, intervalls):
+	with open(dataset) as f:
+		for r in f:			
+			if(r.split()[0] == "@inputs"):
+				head = (r.split()[1])
+				headers = list(head.split(","))
+			elif(r.split()[0] == "@outputs"):
+				headers.append(r.split()[1])
+			elif (r.split()[0] == "@data"):
+				reader = csv.reader(f, delimiter=',')
+				data = list(reader)
+				data = np.array(data).astype(float)
+	X = data[:, 0:-1]
+	y = data[:, -1:]
+	print(X)
+	print(y)
+
+	inter=list()
+	tmp = []
+	prev = '0'
+	with open(intervalls) as file:
+		for r in file:
+			r = r.strip('\n')
+			splitted = r.split(" : ")
+			if(splitted[0].split()[0] == "Number"):
+				tmp.append("["+prev+";inf)")
+				prev = '0'
+				inter.append(tmp[:])
+				tmp.clear()
+			else:
+				current = splitted[-1]
+				tmp.append("["+prev+";"+current+")")
+				#ajout inf
+				prev = current
+	return headers, X, y, inter
+
+def loaded_discretized_to_arff(name, headers, X, y, inter):
+	full = "@relation " + name + "\n\n"
+	attribute_index = 0
+	for voc in headers[0:-1]:
+		full += "@attribute "+ voc +"{'\\'"
+		full += "\\'','\\'".join(inter[attribute_index])
+		full += "\\''}\n"
+		attribute_index += 1
+	full+= "@attribute "+ headers[-1] +" {positive, negative}\n"
+	full += "\n@data \n"
+
+	nb_voc = X[0].size
+	nb_indiv = int(X.size/X[0].size)
+	for ind in range(0,nb_indiv):
+		for voc in range(0, nb_voc):
+			tmp = int(X[ind][voc])
+			full += "'\\'" + inter[voc][tmp] + "\\'',"
+		full += get_real_label(y[ind])
+		if ind < nb_indiv-1:
+			full += "\n"
+
+	with open(name, "w") as text_file:
+		print(full, file=text_file) 
 
 def get_interval(enc, attribute_index, value, max):
 	if value == max -1:
@@ -76,12 +144,20 @@ def k_bins_discretization(X, k, encode, strategy):
 
 
 def main():
-	data_path = 'data/T3_VOC.csv'
-	data_path = 'data/prostate_voc.csv'
-	headers, X, y = load_file(data_path)
+	data_path = 'data/1R-D.t3_voc/1R-D.t3_voc1tra.dat'
+	intervall_path = 'data/1R-D.t3_voc/result1e0.txt'
+	change_class_value(data_path)
 
+	headers, X, y, inter = load_discretized_file(data_path, intervall_path)
+	print(str(type(headers)))
 	print(headers)
-	print(X)
+	print(inter)
+	loaded_discretized_to_arff("test_arff.arff", headers, X, y, inter)
+#	headers, X, y = load_file('data/T3_VOC.csv')
+#	print(str(type(headers)))
+#	print(headers)
+	#print(headers)
+	#print(X)
 
 
 	##### discretization
@@ -107,12 +183,12 @@ def main():
 	# to check
 	#pd.DataFrame(dataset_binned).to_csv("test.csv")
 
-	caim = CAIMD()
-	x_disc = caim.fit_transform(X, y)
+	#caim = CAIMD()
+	#x_disc = caim.fit_transform(X, y)
 
-	print(str(type(x_disc)))
+	#print(str(type(x_disc)))
 
-	print(x_disc)
+	#print(x_disc)
 
 	########## test fayyad (problem with VOC instances)
 
